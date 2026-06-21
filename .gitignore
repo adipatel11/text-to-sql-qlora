@@ -1,0 +1,24 @@
+# Data & artifacts
+data/spider/
+data/processed/
+out/
+results/
+*.sqlite
+*.gguf
+
+# Model caches
+.cache/
+hf_cache/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

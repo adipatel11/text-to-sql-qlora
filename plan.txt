@@ -1,0 +1,19 @@
+That locks it in. The LLM-efficiency project is the right call for industry: it ends in hard numbers (latency, throughput, quality deltas), it's a recognizable hiring signal, and it's a clean sequel to your BERT/ONNX work so the story holds together. Here's a concrete version and a ~10-week plan — roughly what you've got before the MS starts in August.
+The project. Fine-tune a small open coder model for text-to-SQL, then quantize and serve it, and report the quality-vs-speed tradeoffs rigorously.
+
+Why text-to-SQL: execution accuracy is a hard, honest metric (does the generated query return the right rows?) — no LLM-as-judge fuzziness — and it ties straight to your SQL/DynamoDB background. If you'd rather, structured JSON extraction works identically and connects to your Jasco purchase-order work.
+Base model: Qwen2.5-Coder-3B-Instruct, or whatever strong small coder model is current — anything 1.5–3B is fine on a single GPU with QLoRA. Drop to 1.5B if compute is tight.
+Benchmark: the Spider dataset, using its standard execution-accuracy eval. BIRD if you want a harder target.
+Compute: QLoRA on a 3B model fits a single 16–24 GB GPU — Kaggle (free ~30 GPU-hr/week), Colab Pro, or a spot L4/A10 on RunPod/Lambda for a few dollars. Cheap.
+
+The differentiator is the optimization matrix, scaled up from what you already did: compare GPTQ, AWQ, bitsandbytes NF4, and GGUF (a few bit-widths) across two serving stacks — vLLM on GPU (the industry-standard server, very worth knowing) and llama.cpp on CPU (your 2-vCPU EC2 story, but for an LLM). Report execution accuracy, p50/p95/p99 latency, throughput (req/s and tokens/s), peak memory, and disk size, then plot the quality-vs-latency Pareto frontier. That framing is exactly the rigorous-tradeoff thinking from your bias eval.
+
+Steps:
+
+1. Eval and baseline first. Stand up the Spider execution-accuracy harness and the latency rig before touching fine-tuning. Measure the base model zero/few-shot. Milestone: reproducible baseline numbers.
+2. Fine-tune. QLoRA on Spider train; iterate prompt format, LoRA rank/targets, learning rate. Milestone: fine-tuned fp16 beats baseline by a clear margin.
+3. The comparison (core). Quantize × serve across the matrix above. Milestone: results table plus Pareto plot, with a defensible "best GPU config" and "best CPU config."
+4. One stretch plus a demo. Pick one: speculative decoding, multi-LoRA serving in vLLM, or your own length-bucketed batcher vs vLLM's continuous batching head-to-head. Add a small Gradio demo (type a question + schema → SQL + live speed numbers). Milestone: demo plus one advanced result.
+5. Ship. Clean reproducible repo, README with the plot and headline numbers, resume bullets, optional short writeup.
+
+The resume bullet you're working toward being able to write: "Fine-tuned Qwen2.5-Coder-3B with QLoRA for text-to-SQL (X% execution accuracy on Spider), then benchmarked 4 quantization methods across vLLM and llama.cpp — cut p99 latency N% and lifted throughput M% at under 2 pp accuracy loss, identifying the Pareto-optimal config for GPU and CPU serving." That's the kind of sentence that gets interviews.

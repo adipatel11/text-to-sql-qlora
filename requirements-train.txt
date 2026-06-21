@@ -1,0 +1,12 @@
+# QLoRA fine-tuning + local HF inference. Needs a CUDA GPU.
+# Install torch matching your CUDA first (see https://pytorch.org), then this.
+-r requirements-base.txt
+torch>=2.3
+transformers>=4.44
+peft>=0.11
+bitsandbytes>=0.43
+accelerate>=0.33
+sentencepiece>=0.2
+scipy>=1.11
+# Optional experiment tracking:
+# wandb>=0.17

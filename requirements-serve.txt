@@ -1,0 +1,14 @@
+# GPU serving + quantization toolchains. Install on the serving box.
+-r requirements-base.txt
+
+# vLLM (GPU server; serves an OpenAI-compatible API). Pulls its own torch.
+vllm>=0.5
+
+# Quantization toolchains (install the ones you actually use):
+# GPTQ:
+#   pip install auto-gptq optimum
+# AWQ:
+#   pip install autoawq
+#
+# GGUF for llama.cpp is produced with llama.cpp's own convert + quantize tools,
+# not a pip package. See README "Serving matrix" for the build steps.

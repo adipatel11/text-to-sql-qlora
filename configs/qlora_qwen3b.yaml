@@ -1,0 +1,34 @@
+# QLoRA config for Qwen2.5-Coder-3B-Instruct on Spider.
+# Override any field on the CLI: --set lora.r=32 train.learning_rate=1e-4
+seed: 42
+
+model:
+  name: Qwen/Qwen2.5-Coder-3B-Instruct
+  compute_dtype: bfloat16        # use float16 on older GPUs (T4) without bf16
+
+data:
+  train_file: data/processed/train.jsonl
+  max_seq_len: 1024              # schema + question + SQL; bump if truncating
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  # Attention + MLP projections — the standard high-coverage QLoRA target set.
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+train:
+  output_dir: out/qlora-spider
+  batch_size: 8                  # per device; lower to 4 on 16 GB
+  grad_accum: 2                  # effective batch = batch_size * grad_accum
+  learning_rate: 2.0e-4
+  epochs: 3
+  max_steps: -1                  # set e.g. 500 for a fast smoke run
+  lr_scheduler: cosine
+  warmup_ratio: 0.03
+  gradient_checkpointing: true
+  optim: paged_adamw_8bit
+  logging_steps: 10
+  save_steps: 200
+  save_total_limit: 2
+  report_to: none                # set "wandb" if you want curves
