@@ -69,10 +69,21 @@ def run_query(db_path: str, query: str, timeout: float = 30.0) -> list[tuple]:
     return out["rows"]
 
 
+def _norm_cell(c: Any) -> str:
+    # Canonicalize each cell to a string so values are hashable for the
+    # multiset comparison and so 1, 1.0, and "1" all compare equal. SQL freely
+    # returns an int or a float for the same logical value (COUNT vs AVG, SUM
+    # over a join, ...), so an integral float must fold onto its int form or we
+    # report false mismatches and understate execution accuracy.
+    if c is None:
+        return ""
+    if isinstance(c, float) and c.is_integer():
+        return str(int(c))
+    return str(c)
+
+
 def _normalize(rows: list[tuple]) -> list[tuple]:
-    # Stringify cells so 1 == 1.0 == "1" do not silently mismatch on type,
-    # and so values are hashable for the multiset comparison.
-    return [tuple("" if c is None else str(c) for c in row) for row in rows]
+    return [tuple(_norm_cell(c) for c in row) for row in rows]
 
 
 def results_match(gold_rows: list[tuple], pred_rows: list[tuple], order_matters: bool) -> bool:

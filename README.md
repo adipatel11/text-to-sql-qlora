@@ -52,9 +52,16 @@ textsql/
     latency.py          # p50/p95/p99, throughput, peak GPU mem
   train/
     qlora_train.py      # QLoRA SFT, completion-only loss
+  export/
+    merge_lora.py       # adapter + base -> standalone fp16 model
+    calibration.py      # shared GPTQ/AWQ calibration prompts (pinned format)
+    quantize_gptq.py    # fp16 -> GPTQ 4-bit (vLLM)
+    quantize_awq.py     # fp16 -> AWQ 4-bit  (vLLM)
   plot_pareto.py        # results table + quality-vs-latency Pareto plot
 configs/qlora_qwen3b.yaml
 scripts/download_spider.sh
+scripts/export_gguf.sh  # merged fp16 -> GGUF Q4_K_M/Q5_K_M/Q8_0 (llama.cpp)
+tests/                  # stdlib-only unit tests (python -m unittest, or make test)
 Makefile
 ```
 
@@ -89,6 +96,9 @@ Colab, or a spot L4/A10). Drop to Qwen2.5-Coder-1.5B if memory is tight
 ## Workflow
 
 ```bash
+# 0. Sanity check: unit tests for the prompt/schema/metric core (no deps)
+make test
+
 # 1. Data: download Spider and build prompts
 make data
 
@@ -107,13 +117,29 @@ make pareto
 
 ### Serving matrix (the core)
 
-Start a server, then run the **same** eval + latency commands against it.
-
-**vLLM (GPU), e.g. fp16 / GPTQ / AWQ:**
+**Step 0 — merge once.** Every GPU/CPU quantizer consumes a single
+full-precision checkpoint, not the base+adapter pair, so merge first:
 ```bash
-# Merge the LoRA adapter into the base weights first (one-time), then quantize
-# with auto-gptq / autoawq, or serve fp16 directly:
-vllm serve <model-or-quantized-dir> --served-model-name qwen-sql --port 8000
+make merge                  # out/merged-fp16  (loads base in fp16, folds in LoRA)
+```
+
+**Export the quantized variants** (each writes a server-ready directory):
+```bash
+make quant-gptq             # out/gptq-4bit   (GPTQ, vLLM)
+make quant-awq              # out/awq-4bit    (AWQ,  vLLM)
+make gguf                   # out/gguf/model-{Q4_K_M,Q5_K_M,Q8_0}.gguf (llama.cpp)
+```
+GPTQ/AWQ calibrate on real Spider prompts in the *pinned* format
+(`export/calibration.py`) so both methods see an identical, in-distribution
+calibration set.
+
+**vLLM (GPU) — fp16 baseline / GPTQ / AWQ.** Start a server, then run the
+**same** eval + latency commands against it (only `--base-url` and `--out-dir`
+change per cell):
+```bash
+vllm serve out/awq-4bit --served-model-name qwen-sql --quantization awq --port 8000
+# fp16 baseline: vllm serve out/merged-fp16 --served-model-name qwen-sql --port 8000
+# GPTQ:          vllm serve out/gptq-4bit   --served-model-name qwen-sql --quantization gptq --port 8000
 
 python -m textsql.eval.run_eval --backend openai \
   --base-url http://localhost:8000/v1 --model qwen-sql \
@@ -124,12 +150,10 @@ python -m textsql.eval.latency \
   --out results/vllm_awq/latency.json
 ```
 
-**llama.cpp (CPU), GGUF:**
+**llama.cpp (CPU) — GGUF.** `scripts/export_gguf.sh` clones+builds llama.cpp,
+converts the merged model to f16 GGUF, and quantizes it:
 ```bash
-# Convert merged HF model -> GGUF, then quantize to Q4_K_M / Q5_K_M / Q8_0:
-#   python llama.cpp/convert_hf_to_gguf.py <merged_dir> --outfile model-f16.gguf
-#   ./llama.cpp/llama-quantize model-f16.gguf model-Q4_K_M.gguf Q4_K_M
-./llama.cpp/llama-server -m model-Q4_K_M.gguf --port 8000 -c 4096
+llama.cpp/build/bin/llama-server -m out/gguf/model-Q4_K_M.gguf --port 8000 -c 4096
 
 python -m textsql.eval.run_eval --backend openai \
   --base-url http://localhost:8000/v1 --model gguf \
@@ -137,7 +161,7 @@ python -m textsql.eval.run_eval --backend openai \
 # (same latency command, point --base-url at this server)
 ```
 
-**bitsandbytes NF4 (GPU, via HF backend, no server):**
+**bitsandbytes NF4 (GPU, via HF backend, no server, no export step):**
 ```bash
 python -m textsql.eval.run_eval --backend hf \
   --model Qwen/Qwen2.5-Coder-3B-Instruct --adapter out/qlora-spider \
@@ -154,7 +178,9 @@ python -m textsql.eval.run_eval --backend hf \
   "execution match." The official Spider *test-suite* evaluator runs against
   many perturbed DBs to catch coincidental matches — swap it in for
   publication-grade numbers. Reported accuracy here is a close, slightly
-  optimistic proxy.
+  optimistic proxy. Cells compare as strings with integral floats folded onto
+  their int form (so `3` matches `3.0`, as SQL returns either for the same
+  value) and `NULL` treated as empty.
 - **Determinism.** Eval uses greedy decoding (temperature 0) so accuracy is
   reproducible across backends.
 - **Prompt pinning.** `prompts.py` is the only place the prompt is defined;

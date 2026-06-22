@@ -4,11 +4,13 @@
 # vLLM (GPU server; serves an OpenAI-compatible API). Pulls its own torch.
 vllm>=0.5
 
-# Quantization toolchains (install the ones you actually use):
-# GPTQ:
-#   pip install auto-gptq optimum
-# AWQ:
-#   pip install autoawq
-#
-# GGUF for llama.cpp is produced with llama.cpp's own convert + quantize tools,
-# not a pip package. See README "Serving matrix" for the build steps.
+# Quantization toolchains. These build CUDA kernels, so install them on the GPU
+# box against the torch/CUDA already present (comment out the ones you skip).
+# GPTQ export (textsql.export.quantize_gptq):
+auto-gptq>=0.7
+optimum>=1.20
+# AWQ export (textsql.export.quantize_awq):
+autoawq>=0.2
+
+# GGUF for llama.cpp is produced with llama.cpp's own convert + quantize tools
+# (scripts/export_gguf.sh clones/builds it), not a pip package.
