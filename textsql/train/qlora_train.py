@@ -65,12 +65,20 @@ def build_dataset(jsonl_path: str, tokenizer, max_len: int):
         messages = example["messages"]
         # The completion is the gold SQL as an assistant turn.
         full = messages + [{"role": "assistant", "content": example["gold_sql"]}]
-        prompt_ids = tokenizer.apply_chat_template(
-            messages, add_generation_prompt=True, tokenize=True
+        # Render to *text*, then tokenize to a plain list[int]. Going straight to
+        # tokenize=True is not portable: on some transformers builds it returns a
+        # BatchEncoding, and `[:max_len]` then slices its internal Encoding
+        # objects instead of token ids -- which blow up only later when datasets
+        # tries to serialize them to Arrow ("could not convert Encoding...").
+        prompt_text = tokenizer.apply_chat_template(
+            messages, add_generation_prompt=True, tokenize=False
         )
-        full_ids = tokenizer.apply_chat_template(
-            full, add_generation_prompt=False, tokenize=True
+        full_text = tokenizer.apply_chat_template(
+            full, add_generation_prompt=False, tokenize=False
         )
+        # The template already emits the special tokens as text, so don't add more.
+        prompt_ids = tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
+        full_ids = tokenizer(full_text, add_special_tokens=False)["input_ids"]
         full_ids = full_ids[:max_len]
         labels = list(full_ids)
         # Mask everything that belongs to the prompt.
