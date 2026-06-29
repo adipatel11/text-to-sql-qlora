@@ -46,11 +46,13 @@ class GpuSampler(threading.Thread):
         super().__init__(daemon=True)
         self.interval = interval
         self.peak_mib = 0
-        self._stop = threading.Event()
+        # NB: must not be named `_stop` -- that shadows threading.Thread._stop(),
+        # which join() calls internally, raising "'Event' object is not callable".
+        self._stop_event = threading.Event()
         self.available = False
 
     def run(self) -> None:
-        while not self._stop.is_set():
+        while not self._stop_event.is_set():
             try:
                 out = subprocess.check_output(
                     ["nvidia-smi", "--query-gpu=memory.used",
@@ -62,10 +64,10 @@ class GpuSampler(threading.Thread):
                 self.peak_mib = max(self.peak_mib, used)
             except Exception:  # noqa: BLE001 - no GPU / no nvidia-smi
                 return
-            self._stop.wait(self.interval)
+            self._stop_event.wait(self.interval)
 
     def stop(self) -> int:
-        self._stop.set()
+        self._stop_event.set()
         self.join(1.0)
         return self.peak_mib if self.available else -1
 
