@@ -59,6 +59,10 @@ def main() -> None:
     ap.add_argument("--batch-size", type=int, default=8, help="hf backend")
     ap.add_argument("--workers", type=int, default=8, help="openai backend")
     ap.add_argument("--timeout", type=float, default=30.0, help="per-query exec timeout")
+    ap.add_argument(
+        "--request-timeout", type=float, default=600.0,
+        help="openai backend HTTP read timeout (s); CPU GGUF servers need this high",
+    )
     ap.add_argument("--out-dir", required=True, type=Path)
     args = ap.parse_args()
 

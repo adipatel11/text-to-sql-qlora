@@ -152,5 +152,8 @@ def build_backend(args) -> "HFBackend | OpenAIBackend":
             base_url=args.base_url,
             model=args.model,
             max_new_tokens=args.max_new_tokens,
+            # CPU GGUF servers are slow (~30s/req); the default 120s read-timeout
+            # makes run_eval crash under concurrency. Wired through from run_eval.
+            timeout=getattr(args, "request_timeout", 120.0),
         )
     raise ValueError(f"unknown backend: {args.backend}")
