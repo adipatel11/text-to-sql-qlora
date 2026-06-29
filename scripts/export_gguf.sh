@@ -38,8 +38,20 @@ for cand in "$LLAMA_CPP/build/bin/llama-quantize" "$LLAMA_CPP/llama-quantize"; d
   [ -x "$cand" ] && QUANT_BIN="$cand" && break
 done
 if [ -z "$QUANT_BIN" ]; then
-  echo "Building llama.cpp (llama-quantize)..."
-  cmake -S "$LLAMA_CPP" -B "$LLAMA_CPP/build" -DCMAKE_BUILD_TYPE=Release >/dev/null
+  # Build with CUDA when a GPU is visible so llama-server can offload (-ngl);
+  # fall back to a CPU-only build if the CUDA configure step fails.
+  CUDA_FLAG=""
+  if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+    CUDA_FLAG="-DGGML_CUDA=ON"
+    echo "GPU detected -> configuring llama.cpp with CUDA"
+  fi
+  echo "Building llama.cpp (llama-quantize llama-server)..."
+  if ! cmake -S "$LLAMA_CPP" -B "$LLAMA_CPP/build" \
+        -DCMAKE_BUILD_TYPE=Release $CUDA_FLAG >/dev/null 2>&1; then
+    echo "  (CUDA configure failed -> retrying CPU-only)"
+    rm -rf "$LLAMA_CPP/build"
+    cmake -S "$LLAMA_CPP" -B "$LLAMA_CPP/build" -DCMAKE_BUILD_TYPE=Release >/dev/null
+  fi
   cmake --build "$LLAMA_CPP/build" --target llama-quantize llama-server -j >/dev/null
   QUANT_BIN="$LLAMA_CPP/build/bin/llama-quantize"
 fi
